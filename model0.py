@@ -1,18 +1,22 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from pyhgf.model import Network
+import time
+import os
+
+##TODO: add order naming convention, 1st level, 2nd level, 3rd level
 
 
 def simulate_generative_model(n_trials: int = 175, seed: int = 42) -> dict:
     
     np.random.seed(seed)
     
-    # parameters from Table 1
-    omega_c = 0.0      # tonic volatility of global state
-    omega_a_check = -3.0  # tonic volatility of local vol state a
-    omega_b_check = -3.0  # tonic volatility of local vol state b  
-    omega_a = -2.0     # tonic volatility of hidden state a
-    omega_b = -2.0     # tonic volatility of hidden state b
+    # parameters from table 1
+    omega_c = 0.0      # global volatility 
+    omega_a_check = -3.0  # local volatility of state a
+    omega_b_check = -3.0  # local volatility of state b  
+    omega_a = -2.0     # global volatility of state a
+    omega_b = -2.0     # global volatility of state b
     alpha_c_a = 0.05   # coupling strength: x_c -> x_a (value coupling)
     alpha_c_b = 0.05   # coupling strength: x_c -> x_b (value coupling)
     kappa_a = 0.5      # coupling strength: x_a -> x_a (volatility coupling)
@@ -82,27 +86,27 @@ def simulate_generative_model(n_trials: int = 175, seed: int = 42) -> dict:
     }
 
 
-def create_local_global_volatility_hgf() -> Network:
+def create_unified_global_volatility_hgf() -> Network:
 
     network = (
         Network()
         .add_nodes(
             n_nodes=2,
-            precision=1.0,  # input precision 
+            precision=1.0  # input precision 
         )
         # parent of input 0 
         .add_nodes(
             value_children=0,
             mean=0.0,
             precision=0.5,
-            tonic_volatility=-2.0,  # omega_a
+            tonic_volatility=-2.0  # omega_a
         )
         #parent of input 1 
         .add_nodes(
             value_children=1,
             mean=0.0,
             precision=0.5,
-            tonic_volatility=-2.0,  # omega_b
+            tonic_volatility=-2.0  # omega_b
         )
         # volatility parent of x_a 
         .add_nodes(
@@ -110,7 +114,7 @@ def create_local_global_volatility_hgf() -> Network:
             mean=6.0,  
             precision=1.0,
             tonic_volatility=-3.0,  # omega_a
-            volatility_coupling_children=(0.5,),  # kappa_a
+            volatility_coupling_children=(0.5)  # kappa_a
         )
         # parent of x_b 
         .add_nodes(
@@ -118,7 +122,7 @@ def create_local_global_volatility_hgf() -> Network:
             mean=4.0,  
             precision=1.0,
             tonic_volatility=-3.0,  # omega_b
-            volatility_coupling_children=(0.5,),  # kappa_b
+            volatility_coupling_children=(0.5)  # kappa_b
         )
         # global volatility 
         .add_nodes(
@@ -126,193 +130,516 @@ def create_local_global_volatility_hgf() -> Network:
             mean=0.0,
             precision=1.0,
             tonic_volatility=0.0,  # omega_c
-            value_coupling_children=(0.05, 0.05),  # drift coupling
+            value_coupling_children=(0.05, 0.05)  # drift coupling
         )
     )
 
     return network
 
-# try gated approach
-def create_gated_local_global_volatility_hgf() -> Network:
+
+def create_separate_global_volatility_hgf() -> Network:
+
 
     network = (
         Network()
-        .add_nodes(
-            n_nodes=2,
-            precision=1.0,  # Input precision (inverse of observation noise)
-        )
+        .add_nodes(n_nodes=2, precision=1.0)
         
-        .add_nodes(
-            value_children=0,
-            mean=0.0,
-            precision=0.5,
-            tonic_volatility=-2.0,  # omega_a
-        )
-        #parent of input 1 
-        .add_nodes(
-            value_children=1,
-            mean=0.0,
-            precision=0.5,
-            tonic_volatility=-2.0,  # omega_b
-        )
-        # local volatility state x_a gated by the global volatility
-        .add_nodes(
-            kind="continuous-state",
-            volatility_children=2,
-            mean=6.0,  # higher initial volatility for state a
-            precision=1.0,
-            tonic_volatility=-3.0,  # omega_a
-            volatility_coupling_children=(0.5,),  # kappa_a
-        )
-        # local volatility state x_b as volatility parent of x_b (node 5)
 
-        .add_nodes(
-            kind="continuous-state",
-            volatility_children=3,
-            mean=4.0, 
-            precision=1.0,
-            tonic_volatility=-3.0,  # omega_b
-            volatility_coupling_children=(0.5,),  # kappa_b
-        )
-        #  global volatility state x_c as a gating parent
-     
-        .add_nodes(
-            kind="continuous-state",
-            mean=0.0,
-            precision=1.0,
-            tonic_volatility=0.0,  # omega_c
-        )
-        # gating connections from global to local volatilities
-        .add_edges(
-            kind="coupling",
-            parent_idxs=6,  # Global volatility
-            children_idxs=[4, 5],  # Both local volatility states
-            coupling_strengths=[0.05, 0.05],  # Gating strength
-        )
+        .add_nodes(value_children=0, mean=0.0, precision=0.5, tonic_volatility=-2.0)
+        .add_nodes(value_children=1, mean=0.0, precision=0.5, tonic_volatility=-2.0)
+        
+        # local volatility coupling on both "branches"
+        .add_nodes(volatility_children=2, mean=6.0, precision=1.0, tonic_volatility=-3.0, volatility_coupling_children=(0.5))
+        .add_nodes(volatility_children=3, mean=4.0, precision=1.0, tonic_volatility=-3.0, volatility_coupling_children=(0.5))
+        
+        #  global volatilities 
+        .add_nodes(value_children=4, mean=0.0, precision=1.0, tonic_volatility=0.0, value_coupling_children=(0.05))
+        .add_nodes(value_children=5, mean=0.0, precision=1.0, tonic_volatility=0.0, value_coupling_children=(0.05))
     )
 
     return network
 
+# # try gated approach
+# def create_gated_local_global_volatility_hgf() -> Network:
 
-def run_inference(network: Network, observations: np.ndarray) -> Network:
-   
+#     network = (
+#         Network()
+#         .add_nodes(
+#             n_nodes=2,
+#             precision=1.0,  # Input precision (inverse of observation noise)
+#         )
+        
+#         .add_nodes(
+#             value_children=0,
+#             mean=0.0,
+#             precision=0.5,
+#             tonic_volatility=-2.0,  # omega_a
+#         )
+#         #parent of input 1 
+#         .add_nodes(
+#             value_children=1,
+#             mean=0.0,
+#             precision=0.5,
+#             tonic_volatility=-2.0,  # omega_b
+#         )
+#         # local volatility state x_a gated by the global volatility
+#         .add_nodes(
+#             kind="continuous-state",
+#             volatility_children=2,
+#             mean=6.0,  # higher initial volatility for state a
+#             precision=1.0,
+#             tonic_volatility=-3.0,  # omega_a
+#             volatility_coupling_children=(0.5,),  # kappa_a
+#         )
+#         # local volatility state x_b as volatility parent of x_b (node 5)
+
+#         .add_nodes(
+#             kind="continuous-state",
+#             volatility_children=3,
+#             mean=4.0, 
+#             precision=1.0,
+#             tonic_volatility=-3.0,  # omega_b
+#             volatility_coupling_children=(0.5,),  # kappa_b
+#         )
+#         #  global volatility state x_c as a gating parent
+     
+#         .add_nodes(
+#             kind="continuous-state",
+#             mean=0.0,
+#             precision=1.0,
+#             tonic_volatility=0.0,  # omega_c
+#         )
+#         # gating connections from global to local volatilities
+#         .add_edges(
+#             kind="coupling",
+#             parent_idxs=6,  # Global volatility
+#             children_idxs=[4, 5],  # Both local volatility states
+#             coupling_strengths=[0.05, 0.05],  # Gating strength
+#         )
+#     )
+
+#     return network
+
+
+def run_inference(network: Network, observations: np.ndarray, return_details: bool = False
+) -> Network | tuple[Network, dict]:
+    
+    observations = np.atleast_2d(observations)
+    if observations.shape[0] < observations.shape[1]:
+        observations = observations.T  # ensure (n_trials, n_inputs)
+
+    n_trials, n_inputs = observations.shape
+
+    # look for empty/wrong values 
+    n_nan = np.sum(np.isnan(observations))
+    n_inf = np.sum(np.isinf(observations))
+
+    if n_inf > 0:
+        raise ValueError(f"observations contain {n_inf} infinite values")
+
+    # time inference
+    start_time = time.time()
     network = network.input_data(input_data=observations)
+    elapsed = time.time() - start_time
+
+    # get trajectories for diagnostics
+    trajectories = network.node_trajectories
+
+
+    if return_details:
+        details = {
+            'elapsed_time': elapsed,
+            'n_trials': n_trials,
+            'n_inputs': n_inputs,
+            'trajectories': trajectories,
+        }
+        return network, details
+
     return network
 
 
-def plot_results(sim_data: dict, network: Network, save_path: str = None):
+def run_inference_batch( network_factory: callable, observations_list: list[np.ndarray],
+) -> list[tuple[Network, dict]]:
    
-    fig, axes = plt.subplots(3, 2, figsize=(14, 10))
-    
-    n_trials = sim_data['n_trials']
-    trial_numbers = np.arange(n_trials)
-    
-    # get belief trajectories 
-    trajectories = network.node_trajectories
-    
-   
-    
-    axes[0, 0].plot(trial_numbers, sim_data['x_c'], 'k-', linewidth=2)
-    axes[0, 0].set_ylabel('$x_c$ (global volatility)')
-    axes[0, 0].set_title('Generative Model\n(Simulated States)')
-    axes[0, 0].set_xlim([0, n_trials])
-    
- 
-    axes[1, 0].plot(trial_numbers, sim_data['x_a_check'], 'r-', linewidth=2, label='$x_{\\check{a}}$ (local vol a)')
-    axes[1, 0].plot(trial_numbers, sim_data['x_b_check'], 'b-', linewidth=2, label='$x_{\\check{b}}$ (local vol b)')
-    axes[1, 0].set_ylabel('Local volatility')
-    axes[1, 0].legend(loc='upper right')
-    axes[1, 0].set_xlim([0, n_trials])
-    
-   
-    axes[2, 0].scatter(trial_numbers, sim_data['u_a'], alpha=0.3, s=10, c='red', label='$u_a$ (obs)')
-    axes[2, 0].scatter(trial_numbers, sim_data['u_b'], alpha=0.3, s=10, c='blue', label='$u_b$ (obs)')
-    axes[2, 0].plot(trial_numbers, sim_data['x_a'], 'r-', linewidth=2, label='$x_a$ (state)')
-    axes[2, 0].plot(trial_numbers, sim_data['x_b'], 'b-', linewidth=2, label='$x_b$ (state)')
-    axes[2, 0].set_xlabel('Trial number')
-    axes[2, 0].set_ylabel('Hidden states / Observations')
-    axes[2, 0].legend(loc='upper right')
-    axes[2, 0].set_xlim([0, n_trials])
+    results = []
+    n_datasets = len(observations_list)
 
-    mu_c = trajectories[6]['mean']
-    axes[0, 1].plot(trial_numbers, mu_c, 'k-', linewidth=2, label='$\\mu_c$')
-    axes[0, 1].set_ylabel('$\\mu_c$ (belief about global vol)')
-    axes[0, 1].set_title('Inference Model\n(Beliefs)')
-    axes[0, 1].set_xlim([0, n_trials])
     
-  
-    mu_a_check = trajectories[4]['mean']
-    mu_b_check = trajectories[5]['mean']
-    axes[1, 1].plot(trial_numbers, mu_a_check, 'r-', linewidth=2, label='$\\mu_{\\check{a}}$')
-    axes[1, 1].plot(trial_numbers, mu_b_check, 'b-', linewidth=2, label='$\\mu_{\\check{b}}$')
-    axes[1, 1].set_ylabel('Beliefs about local volatility')
-    axes[1, 1].legend(loc='upper right')
+    for i, obs in enumerate(observations_list):
+        
+        network = network_factory()
+        network, details = run_inference(network, obs,  return_details=True)
+        details['dataset_idx'] = i
+        results.append((network, details))
+
+    return results
+
+
+# model comparison 
+def compute_model_metrics(network: Network) -> dict:
+
+    
+    trajectories = network.node_trajectories
+
+    # sum surprise across input nodes (0 and 1)
+    total_surprise = 0.0
+    for input_idx in [0, 1]:
+        if 'surprise' in trajectories[input_idx]:
+            surprise = trajectories[input_idx]['surprise']
+            # skip nan values 
+            total_surprise += np.nansum(surprise)
+
+    # negative log-likelihood 
+    nll = total_surprise
+
+    n_params = count_free_parameters(network)
+
+
+    n_obs = len(trajectories[0]['mean'])
+
+    aic = 2 * n_params + 2 * nll
+
+
+    bic = n_params * np.log(n_obs) + 2 * nll
+
+
+
+    return {
+        'nll': nll,
+        'aic': aic,
+        'bic': bic,
+        'n_params': n_params,
+        'n_obs': n_obs,
+        'total_surprise': total_surprise
+    }
+
+
+def count_free_parameters(network: Network) -> int:
+   
+    # count state nodes
+    n_continuous_nodes = network.n_nodes - 2  # exclude inputs 0, 1
+
+    n_params = n_continuous_nodes
+
+    # count coupling parameters 
+    edges = network.edges  # tuple of adjacencylists
+
+    for node_edges in edges:
+        # count volatility children connections
+        if node_edges.volatility_children is not None:
+            n_params += len(node_edges.volatility_children)
+
+        # count value children connections (alpha parameters) for non-input parent nodes
+        if node_edges.value_children is not None:
+            # only count if this is a higher-level node 
+            # by checking if it has value_parents 
+            # or if it connects to volatility nodes
+            if node_edges.value_parents is None:  # top-level nodes have coupling params
+                n_params += len(node_edges.value_children)
+
+    return n_params
+
+
+def compare_models(observations: np.ndarray) -> dict:
+
+    # create and fit unified model
+    unified_network = create_unified_global_volatility_hgf()
+    unified_network = run_inference(unified_network, observations)
+    unified_metrics = compute_model_metrics(unified_network)
+
+    # create and fit separate model
+    separate_network = create_separate_global_volatility_hgf()
+    separate_network = run_inference(separate_network, observations)
+    separate_metrics = compute_model_metrics(separate_network)
+
+    # compute differences (negative = unified is better)
+    delta_aic = unified_metrics['aic'] - separate_metrics['aic']
+    delta_bic = unified_metrics['bic'] - separate_metrics['bic']
+
+    print("=" * 50)
+    print("Model Comparison: Unified vs Separate Global Volatility")
+    print("=" * 50)
+    print(f"\nUnified Model (shared global volatility):")
+    print(f"  Parameters: {unified_metrics['n_params']}")
+    print(f"  NLL: {unified_metrics['nll']:.2f}")
+    print(f"  AIC: {unified_metrics['aic']:.2f}")
+    print(f"  BIC: {unified_metrics['bic']:.2f}")
+
+    print(f"\nSeparate Model (independent global volatilities):")
+    print(f"  Parameters: {separate_metrics['n_params']}")
+    print(f"  NLL: {separate_metrics['nll']:.2f}")
+    print(f"  AIC: {separate_metrics['aic']:.2f}")
+    print(f"  BIC: {separate_metrics['bic']:.2f}")
+
+    print(f"\nModel Comparison:")
+    print(f"  ΔAIC (unified - separate): {delta_aic:.2f}")
+    print(f"  ΔBIC (unified - separate): {delta_bic:.2f}")
+
+    winner_aic = "Unified" if delta_aic < 0 else "Separate"
+    winner_bic = "Unified" if delta_bic < 0 else "Separate"
+    print(f"\n  Preferred by AIC: {winner_aic}")
+    print(f"  Preferred by BIC: {winner_bic}")
+
+    return {
+        'unified': unified_metrics,
+        'separate': separate_metrics,
+        'unified_network': unified_network,
+        'separate_network': separate_network,
+        'delta_aic': delta_aic,
+        'delta_bic': delta_bic
+    }
+
+
+def plot_model_comparison(sim_data: dict, unified_network: Network, separate_network: Network,
+                          save_path: str = None):
+
+    n_trials = sim_data['n_trials']
+    trials = np.arange(n_trials)
+
+    unified_traj = unified_network.node_trajectories
+    separate_traj = separate_network.node_trajectories
+
+    fig, axes = plt.subplots(3, 2, figsize=(14, 10))
+
+    # row 1: global volatility beliefs
+    # left: true global volatility
+    axes[0, 0].plot(trials, sim_data['x_c'], 'k-', linewidth=2.5, label='True $x_c$')
+    axes[0, 0].set_ylabel('Global Volatility')
+    axes[0, 0].set_title('True State (Generative Model)')
+    axes[0, 0].legend()
+    axes[0, 0].set_xlim([0, n_trials])
+
+    # right: compare global volatility beliefs
+    # unified: single node 6
+    axes[0, 1].plot(trials, unified_traj[6]['mean'], 'purple', linewidth=2, label='Unified $\\mu_c$')
+    # separate: nodes 6 and 7
+    axes[0, 1].plot(trials, separate_traj[6]['mean'], 'r--', linewidth=2, label='Separate $\\mu_{c,a}$')
+    axes[0, 1].plot(trials, separate_traj[7]['mean'], 'b--', linewidth=2, label='Separate $\\mu_{c,b}$')
+    axes[0, 1].plot(trials, sim_data['x_c'], 'k:', linewidth=1.5, alpha=0.5, label='True $x_c$')
+    axes[0, 1].set_ylabel('Global Volatility Belief')
+    axes[0, 1].set_title('Model Comparison: Global Volatility')
+    axes[0, 1].legend(loc='upper right')
+    axes[0, 1].set_xlim([0, n_trials])
+
+    # row 2: local volatility beliefs
+    # left: true local volatilities
+    axes[1, 0].plot(trials, sim_data['x_a_check'], 'r-', linewidth=2, label='True $\\check{x}_a$')
+    axes[1, 0].plot(trials, sim_data['x_b_check'], 'b-', linewidth=2, label='True $\\check{x}_b$')
+    axes[1, 0].set_ylabel('Local Volatility')
+    axes[1, 0].set_title('True States')
+    axes[1, 0].legend()
+    axes[1, 0].set_xlim([0, n_trials])
+
+    # right: compare local volatility beliefs
+    axes[1, 1].plot(trials, unified_traj[4]['mean'], 'r-', linewidth=2, label='Unified $\\mu_{\\check{a}}$')
+    axes[1, 1].plot(trials, unified_traj[5]['mean'], 'b-', linewidth=2, label='Unified $\\mu_{\\check{b}}$')
+    axes[1, 1].plot(trials, separate_traj[4]['mean'], 'r--', linewidth=2, alpha=0.7, label='Separate $\\mu_{\\check{a}}$')
+    axes[1, 1].plot(trials, separate_traj[5]['mean'], 'b--', linewidth=2, alpha=0.7, label='Separate $\\mu_{\\check{b}}$')
+    axes[1, 1].set_ylabel('Local Volatility Belief')
+    axes[1, 1].set_title('Model Comparison: Local Volatility')
+    axes[1, 1].legend(loc='upper right', fontsize=8)
     axes[1, 1].set_xlim([0, n_trials])
 
-    mu_a = trajectories[2]['mean']
-    mu_b = trajectories[3]['mean']
-    axes[2, 1].scatter(trial_numbers, sim_data['u_a'], alpha=0.3, s=10, c='red', label='$u_a$ (obs)')
-    axes[2, 1].scatter(trial_numbers, sim_data['u_b'], alpha=0.3, s=10, c='blue', label='$u_b$ (obs)')
-    axes[2, 1].plot(trial_numbers, mu_a, 'r-', linewidth=2, label='$\\mu_a$')
-    axes[2, 1].plot(trial_numbers, mu_b, 'b-', linewidth=2, label='$\\mu_b$')
-    axes[2, 1].set_xlabel('Trial number')
-    axes[2, 1].set_ylabel('Beliefs about hidden states')
-    axes[2, 1].legend(loc='upper right')
+    # row 3: hidden state beliefs with observations
+    # left: observations and true states
+    axes[2, 0].scatter(trials, sim_data['u_a'], alpha=0.3, s=8, c='red', label='Obs $u_a$')
+    axes[2, 0].scatter(trials, sim_data['u_b'], alpha=0.3, s=8, c='blue', label='Obs $u_b$')
+    axes[2, 0].plot(trials, sim_data['x_a'], 'r-', linewidth=2, label='True $x_a$')
+    axes[2, 0].plot(trials, sim_data['x_b'], 'b-', linewidth=2, label='True $x_b$')
+    axes[2, 0].set_xlabel('Trial')
+    axes[2, 0].set_ylabel('Hidden State')
+    axes[2, 0].set_title('Observations & True States')
+    axes[2, 0].legend(loc='upper right', fontsize=8)
+    axes[2, 0].set_xlim([0, n_trials])
+
+    # right: compare hidden state beliefs
+    axes[2, 1].scatter(trials, sim_data['u_a'], alpha=0.2, s=5, c='gray')
+    axes[2, 1].scatter(trials, sim_data['u_b'], alpha=0.2, s=5, c='gray')
+    axes[2, 1].plot(trials, unified_traj[2]['mean'], 'r-', linewidth=2, label='Unified $\\mu_a$')
+    axes[2, 1].plot(trials, unified_traj[3]['mean'], 'b-', linewidth=2, label='Unified $\\mu_b$')
+    axes[2, 1].plot(trials, separate_traj[2]['mean'], 'r--', linewidth=2, alpha=0.7, label='Separate $\\mu_a$')
+    axes[2, 1].plot(trials, separate_traj[3]['mean'], 'b--', linewidth=2, alpha=0.7, label='Separate $\\mu_b$')
+    axes[2, 1].set_xlabel('Trial')
+    axes[2, 1].set_ylabel('Hidden State Belief')
+    axes[2, 1].set_title('Model Comparison: Hidden States')
+    axes[2, 1].legend(loc='upper right', fontsize=8)
     axes[2, 1].set_xlim([0, n_trials])
-    
+
     plt.tight_layout()
-    
+
     if save_path:
         plt.savefig(save_path, dpi=150, bbox_inches='tight')
         print(f"Figure saved to {save_path}")
-    
+
     plt.show()
     return fig
 
 
-def main():
-  
-  
-    print("=" * 60)
-    print("gHGF Figure 6: Local vs Global Volatility")
-    print("Standard Implementation using pyhgf")
-    print("=" * 60)
+def plot_global_volatility_focus(sim_data: dict, unified_network: Network, separate_network: Network,
+                                  save_path: str = None):
+    """
+    focused comparison of global volatility inference between models.
+    """
+    n_trials = sim_data['n_trials']
+    trials = np.arange(n_trials)
+
+    unified_traj = unified_network.node_trajectories
+    separate_traj = separate_network.node_trajectories
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+    # left: unified model - single shared global volatility
+    axes[0].fill_between(trials, sim_data['x_c'] - 0.5, sim_data['x_c'] + 0.5,
+                         alpha=0.2, color='gray', label='True $x_c$ range')
+    axes[0].plot(trials, sim_data['x_c'], 'k-', linewidth=2.5, label='True $x_c$')
+    axes[0].plot(trials, unified_traj[6]['mean'], 'purple', linewidth=2.5, label='Belief $\\mu_c$')
+    axes[0].axhline(y=0, color='gray', linestyle=':', alpha=0.5)
+    axes[0].set_xlabel('Trial')
+    axes[0].set_ylabel('Global Volatility')
+    axes[0].set_title('UNIFIED MODEL\n(Shared Global Volatility)')
+    axes[0].legend(loc='upper right')
+    axes[0].set_xlim([0, n_trials])
+
+    # right: separate model - two independent global volatilities
+    axes[1].fill_between(trials, sim_data['x_c'] - 0.5, sim_data['x_c'] + 0.5,
+                         alpha=0.2, color='gray', label='True $x_c$ range')
+    axes[1].plot(trials, sim_data['x_c'], 'k-', linewidth=2.5, label='True $x_c$')
+    axes[1].plot(trials, separate_traj[6]['mean'], 'r-', linewidth=2.5, label='Belief $\\mu_{c,a}$ (branch a)')
+    axes[1].plot(trials, separate_traj[7]['mean'], 'b-', linewidth=2.5, label='Belief $\\mu_{c,b}$ (branch b)')
+    axes[1].axhline(y=0, color='gray', linestyle=':', alpha=0.5)
+    axes[1].set_xlabel('Trial')
+    axes[1].set_ylabel('Global Volatility')
+    axes[1].set_title('SEPARATE MODEL\n(Independent Global Volatilities)')
+    axes[1].legend(loc='upper right')
+    axes[1].set_xlim([0, n_trials])
+
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f"Figure saved to {save_path}")
+
+    plt.show()
+    return fig
+
+
+def plot_changepoint_comparison(unified_network: Network, separate_network: Network,
+                                save_path: str = None):
     
-    # simulate the generative model
-    print("\n[1] Simulating generative model...")
-    sim_data = simulate_generative_model(n_trials=175, seed=42)
-    print(f"    Generated {sim_data['n_trials']} trials of observations")
-    
-    # create the HGF network
-    print("\n[2] Creating HGF network structure...")
-    network = create_local_global_volatility_hgf()
-    print(f"    Network has {network.n_nodes} nodes")
-    
-    # visualize structure
-    print("\n[3] Network structure:")
-    network.plot_network()
-    
-    # prep observations
+    unified_traj = unified_network.node_trajectories
+    separate_traj = separate_network.node_trajectories
+
+    # get changepoint from input nodes
+    unified_changepoint_a = np.nan_to_num(unified_traj[0].get('surprise', np.zeros(1)))
+    unified_changepoint_b = np.nan_to_num(unified_traj[1].get('surprise', np.zeros(1)))
+    separate_changepoint_a = np.nan_to_num(separate_traj[0].get('surprise', np.zeros(1)))
+    separate_changepoint_b = np.nan_to_num(separate_traj[1].get('surprise', np.zeros(1)))
+
+    n_trials = len(unified_changepoint_a)
+    trials = np.arange(n_trials)
+
+    # cumulative changepoint
+    unified_cumsum = np.cumsum(unified_changepoint_a + unified_changepoint_b)
+    separate_cumsum = np.cumsum(separate_changepoint_a + separate_changepoint_b)
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+    # left: trial-by-trial changepoint
+    axes[0].plot(trials, unified_changepoint_a + unified_changepoint_b, 'purple',
+                 linewidth=1.5, alpha=0.7, label='Unified')
+    axes[0].plot(trials, separate_changepoint_a + separate_changepoint_b, 'orange',
+                 linewidth=1.5, alpha=0.7, label='Separate')
+    axes[0].set_xlabel('Trial')
+    axes[0].set_ylabel('Changepoint (per trial)')
+    axes[0].set_title('Trial-by-Trial Changepoint')
+    axes[0].legend()
+    axes[0].set_xlim([0, n_trials])
+
+    # right: cumulative changepoint
+    axes[1].plot(trials, unified_cumsum, 'purple', linewidth=2.5, label='Unified')
+    axes[1].plot(trials, separate_cumsum, 'orange', linewidth=2.5, label='Separate')
+    axes[1].set_xlabel('Trial')
+    axes[1].set_ylabel('Cumulative Changepoint (NLL)')
+    axes[1].set_title('Cumulative Changepoint (Lower = Better Fit)')
+    axes[1].legend()
+    axes[1].set_xlim([0, n_trials])
+
+    # add final values as text
+    axes[1].text(0.95, 0.95, f'Unified: {unified_cumsum[-1]:.1f}\nSeparate: {separate_cumsum[-1]:.1f}',
+                 transform=axes[1].transAxes, ha='right', va='top', fontsize=11,
+                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f"Figure saved to {save_path}")
+
+    plt.show()
+    return fig
+
+
+def run_and_plot_comparison(n_trials: int = 175, seed: int = 42, save_dir: str = 'outputs'):
+   
+
+    os.makedirs(save_dir, exist_ok=True)
+
+    # simulate data
+    print("Simulating generative model...")
+    sim_data = simulate_generative_model(n_trials=n_trials, seed=seed)
     observations = np.column_stack([sim_data['u_a'], sim_data['u_b']])
-    print(f"\n[4] Running inference on {observations.shape[0]} observations...")
-    
-    # Run 
-    network = run_inference(network, observations)
-    print("    Inference complete!")
-    
-    # plotting  
-    print("\n[5] Plotting results...")
-    fig = plot_results(sim_data, network, save_path='outputs/ghgf_figure6_standard.png')
-    
-    # summary stats
-    print("\n[6] Summary:")
-    trajectories = network.node_trajectories
-    print(f"    Global volatility belief (node 6) final mean: {trajectories[6]['mean'][-1]:.3f}")
-    print(f"    Local vol a belief (node 4) final mean: {trajectories[4]['mean'][-1]:.3f}")
-    print(f"    Local vol b belief (node 5) final mean: {trajectories[5]['mean'][-1]:.3f}")
-    
-    return network, sim_data
+
+    # create and fit unified model
+    print("Fitting unified model (shared global volatility)...")
+    unified_network = create_unified_global_volatility_hgf()
+    unified_network = run_inference(unified_network, observations)
+
+    # create and fit separate model
+    print("Fitting separate model (independent global volatilities)...")
+    separate_network = create_separate_global_volatility_hgf()
+    separate_network = run_inference(separate_network, observations)
+
+    # compute metrics
+    unified_metrics = compute_model_metrics(unified_network)
+    separate_metrics = compute_model_metrics(separate_network)
+
+    # print comparison
+    print("\n" + "=" * 50)
+    print("MODEL COMPARISON RESULTS")
+    print("=" * 50)
+    print(f"\nUnified (shared):     AIC = {unified_metrics['aic']:.1f}, BIC = {unified_metrics['bic']:.1f}")
+    print(f"Separate (independent): AIC = {separate_metrics['aic']:.1f}, BIC = {separate_metrics['bic']:.1f}")
+    delta_aic = unified_metrics['aic'] - separate_metrics['aic']
+    delta_bic = unified_metrics['bic'] - separate_metrics['bic']
+    winner = "UNIFIED" if delta_aic < 0 else "SEPARATE"
+    print(f"\nPreferred model: {winner} (ΔAIC = {delta_aic:.1f})")
+
+    # generate plots
+    print("\nGenerating plots...")
+
+    plot_model_comparison(sim_data, unified_network, separate_network,
+                         save_path=f'{save_dir}/model_comparison.png')
+
+    plot_global_volatility_focus(sim_data, unified_network, separate_network,
+                                  save_path=f'{save_dir}/global_volatility_focus.png')
+
+    plot_changepoint_comparison(unified_network, separate_network,
+                                save_path=f'{save_dir}/changepoint_comparison.png')
+
+    return {
+        'sim_data': sim_data,
+        'unified_network': unified_network,
+        'separate_network': separate_network,
+        'unified_metrics': unified_metrics,
+        'separate_metrics': separate_metrics
+    }
+
+
+def main():
+    """run model comparison between unified and separate global volatility models."""
+    results = run_and_plot_comparison(n_trials=175, seed=42, save_dir='outputs')
+    return results
 
 
 if __name__ == "__main__":
-    network, sim_data = main()
+    results = main()
