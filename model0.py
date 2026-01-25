@@ -477,9 +477,7 @@ def plot_model_comparison(sim_data: dict, unified_network: Network, separate_net
 
 def plot_global_volatility_focus(sim_data: dict, unified_network: Network, separate_network: Network,
                                   save_path: str = None):
-    """
-    focused comparison of global volatility inference between models.
-    """
+   
     n_trials = sim_data['n_trials']
     trials = np.arange(n_trials)
 
@@ -636,7 +634,7 @@ def run_and_plot_comparison(n_trials: int = 175, seed: int = 42, save_dir: str =
 
 
 def main():
-    """run model comparison between unified and separate global volatility models."""
+    # run model comparison between unified and separate global volatility models.
     results = run_and_plot_comparison(n_trials=175, seed=42, save_dir='outputs')
     return results
 
