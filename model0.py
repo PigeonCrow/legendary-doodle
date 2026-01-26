@@ -3,6 +3,7 @@ import os
 import time
 
 import matplotlib.pyplot as plt
+import networkx as nx
 import numpy as np
 from pyhgf.model import Network
 
@@ -144,22 +145,9 @@ def create_unified_global_volatility_hgf() -> Network:
 def create_separate_global_volatility_hgf() -> Network:
     network = (
         Network()
-        .add_nodes(
-            n_nodes=2,
-            precision=1.0,
-        )
-        .add_nodes(
-            value_children=0,
-            mean=0.0,
-            precision=0.5,
-            tonic_volatility=-2.0,
-        )
-        .add_nodes(
-            value_children=1,
-            mean=0.0,
-            precision=0.5,
-            tonic_volatility=-2.0,
-        )
+        .add_nodes(n_nodes=2, precision=1.0)
+        .add_nodes(value_children=0, mean=0.0, precision=0.5, tonic_volatility=-2.0)
+        .add_nodes(value_children=1, mean=0.0, precision=0.5, tonic_volatility=-2.0)
         # local volatility coupling on both "branches"
         .add_nodes(
             volatility_children=2,
@@ -316,10 +304,9 @@ def compute_model_metrics(network: Network) -> dict:
     # sum surprise across input nodes (0 and 1)
     total_surprise = 0.0
     for input_idx in [0, 1]:
-        if "surprise" in trajectories[input_idx]:
-            surprise = trajectories[input_idx]["surprise"]
-            # skip nan values
-            total_surprise += np.nansum(surprise)
+        surprise = calculate_surprise(trajectories[input_idx])
+        # skip nan values
+        total_surprise += np.nansum(surprise)
 
     # negative log-likelihood
     nll = total_surprise
@@ -532,9 +519,6 @@ def plot_model_comparison(
 def plot_global_volatility_focus(
     sim_data: dict, unified_network: Network, separate_network: Network, save_path: str = None
 ):
-    """
-    focused comparison of global volatility inference between models.
-    """
     n_trials = sim_data["n_trials"]
     trials = np.arange(n_trials)
 
@@ -602,31 +586,53 @@ def plot_global_volatility_focus(
     return fig
 
 
-def plot_changepoint_comparison(
+def calculate_surprise(traj: dict) -> np.ndarray:
+    if "surprise" in traj:
+        return traj["surprise"]
+
+    if "expected_mean" in traj and "expected_precision" in traj and "observed" in traj:
+        mu = np.array(traj["expected_mean"])
+        pi = np.array(traj["expected_precision"])
+        u = np.array(traj["observed"])
+
+        # avoid log(0)
+        safe_pi = np.where(pi <= 1e-10, 1e-10, pi)
+
+        # gaussian surprise: -ln P(u)
+        # 0.5 * ln(2pi) - 0.5 * ln(pi) + 0.5 * pi * (u - mu)^2
+        # note: 0.5 * ln(2pi / pi) = 0.5 * ln(2pi) - 0.5 * ln(pi)
+
+        nll = 0.5 * np.log(2 * np.pi) - 0.5 * np.log(safe_pi) + 0.5 * pi * (u - mu) ** 2
+        return nll
+
+    return np.zeros(len(traj["mean"]))
+
+
+def plot_surprise_comparison(
     unified_network: Network, separate_network: Network, save_path: str = None
 ):
     unified_traj = unified_network.node_trajectories
     separate_traj = separate_network.node_trajectories
 
-    # get changepoint from input nodes
-    unified_changepoint_a = np.nan_to_num(unified_traj[0].get("surprise", np.zeros(1)))
-    unified_changepoint_b = np.nan_to_num(unified_traj[1].get("surprise", np.zeros(1)))
-    separate_changepoint_a = np.nan_to_num(separate_traj[0].get("surprise", np.zeros(1)))
-    separate_changepoint_b = np.nan_to_num(separate_traj[1].get("surprise", np.zeros(1)))
+    # get surprise from input nodes
+    unified_surprise_a = np.nan_to_num(calculate_surprise(unified_traj[0]))
+    unified_surprise_b = np.nan_to_num(calculate_surprise(unified_traj[1]))
+    separate_surprise_a = np.nan_to_num(calculate_surprise(separate_traj[0]))
+    separate_surprise_b = np.nan_to_num(calculate_surprise(separate_traj[1]))
 
-    n_trials = len(unified_changepoint_a)
+    n_trials = len(unified_surprise_a)
     trials = np.arange(n_trials)
 
-    # cumulative changepoint
-    unified_cumsum = np.cumsum(unified_changepoint_a + unified_changepoint_b)
-    separate_cumsum = np.cumsum(separate_changepoint_a + separate_changepoint_b)
+    # cumulative surprise
+    unified_cumsum = np.cumsum(unified_surprise_a + unified_surprise_b)
+    separate_cumsum = np.cumsum(separate_surprise_a + separate_surprise_b)
 
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
-    # left: trial-by-trial changepoint
+    # left: trial-by-trial surprise
     axes[0].plot(
         trials,
-        unified_changepoint_a + unified_changepoint_b,
+        unified_surprise_a + unified_surprise_b,
         "purple",
         linewidth=1.5,
         alpha=0.7,
@@ -634,24 +640,24 @@ def plot_changepoint_comparison(
     )
     axes[0].plot(
         trials,
-        separate_changepoint_a + separate_changepoint_b,
+        separate_surprise_a + separate_surprise_b,
         "orange",
         linewidth=1.5,
         alpha=0.7,
         label="Separate",
     )
     axes[0].set_xlabel("Trial")
-    axes[0].set_ylabel("Changepoint (per trial)")
-    axes[0].set_title("Trial-by-Trial Changepoint")
+    axes[0].set_ylabel("Surprise (per trial)")
+    axes[0].set_title("Trial-by-Trial Surprise")
     axes[0].legend()
     axes[0].set_xlim([0, n_trials])
 
-    # right: cumulative changepoint
+    # right: cumulative surprise
     axes[1].plot(trials, unified_cumsum, "purple", linewidth=2.5, label="Unified")
     axes[1].plot(trials, separate_cumsum, "orange", linewidth=2.5, label="Separate")
     axes[1].set_xlabel("Trial")
-    axes[1].set_ylabel("Cumulative Changepoint (NLL)")
-    axes[1].set_title("Cumulative Changepoint (Lower = Better Fit)")
+    axes[1].set_ylabel("Cumulative Surprise (NLL)")
+    axes[1].set_title("Cumulative Surprise (Lower = Better Fit)")
     axes[1].legend()
     axes[1].set_xlim([0, n_trials])
 
@@ -666,6 +672,160 @@ def plot_changepoint_comparison(
         fontsize=11,
         bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
     )
+
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+        print(f"Figure saved to {save_path}")
+
+    plt.show()
+    return fig
+
+
+def plot_network_structure(
+    unified_network: Network, separate_network: Network, save_path: str = None
+):
+    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+
+    models = [
+        ("Unified Model\n(Shared Global Volatility)", unified_network, axes[0]),
+        ("Separate Model\n(Independent Global Volatilities)", separate_network, axes[1]),
+    ]
+
+    for title, net, ax in models:
+        ax.set_title(title, fontsize=12, fontweight="bold")
+
+        try:
+            G = nx.DiGraph()
+            n_nodes = net.n_nodes
+            edges_info = net.edges
+
+            # --- Build Graph ---
+            for parent_idx, edge_data in enumerate(edges_info):
+                # Value children (drift coupling) -> Solid Lines
+                if edge_data.value_children is not None:
+                    children = edge_data.value_children
+                    if isinstance(children, (int, float, np.integer)):
+                        children = [int(children)]
+                    for child_idx in children:
+                        # Solid black line
+                        G.add_edge(
+                            parent_idx, child_idx, type="value", color="black", style="solid"
+                        )
+
+                # Volatility children (variance coupling) -> Dashed Lines
+                if edge_data.volatility_children is not None:
+                    children = edge_data.volatility_children
+                    if isinstance(children, (int, float, np.integer)):
+                        children = [int(children)]
+                    for child_idx in children:
+                        # Dashed black line
+                        G.add_edge(
+                            parent_idx, child_idx, type="volatility", color="black", style="dashed"
+                        )
+
+            # --- Layout ---
+            pos = {}
+            # Level 0: Inputs (0, 1) - Bottom
+            pos[0] = (0.3, 0)
+            pos[1] = (0.7, 0)
+
+            # Level 1: Hidden States (2, 3)
+            pos[2] = (0.3, 1)
+            pos[3] = (0.7, 1)
+
+            # Level 2: Local Volatility (4, 5)
+            pos[4] = (0.3, 2)
+            pos[5] = (0.7, 2)
+
+            # Level 3: Global Volatility (6...7)
+            if n_nodes == 7:  # Unified
+                pos[6] = (0.5, 3)
+            elif n_nodes >= 8:  # Separate
+                pos[6] = (0.3, 3)
+                pos[7] = (0.7, 3)
+            else:
+                pos = nx.spring_layout(G)
+
+            # --- Drawing ---
+
+            # Draw edges
+            edges = G.edges()
+            if edges:
+                edge_styles = [G[u][v]["style"] for u, v in edges]
+
+                nx.draw_networkx_edges(
+                    G,
+                    pos,
+                    ax=ax,
+                    edge_color="black",
+                    style=edge_styles,
+                    arrows=True,
+                    arrowsize=20,
+                    width=1.5,
+                    node_size=600,
+                )
+
+            # Draw nodes
+            # Style: Black and white
+            # Observed nodes (0, 1): Filled gray/black
+            # Latent nodes: White with black border
+            node_colors = []
+            for n in G.nodes():
+                if n in [0, 1]:
+                    node_colors.append("#808080")  # Filled gray for observed
+                else:
+                    node_colors.append("white")  # White for latent
+
+            nx.draw_networkx_nodes(
+                G,
+                pos,
+                ax=ax,
+                node_color=node_colors,
+                node_size=600,
+                edgecolors="black",
+                linewidths=1.5,
+            )
+
+            # Draw labels (Node IDs or Names)
+            labels = {
+                0: "$u_a$",
+                1: "$u_b$",
+                2: "$x_a$",
+                3: "$x_b$",
+                4: "$\\check{x}_a$",
+                5: "$\\check{x}_b$",
+                6: "$x_c$" if n_nodes == 7 else "$x_{c,a}$",
+                7: "$x_{c,b}$",
+            }
+            labels = {k: v for k, v in labels.items() if k in G.nodes}
+            nx.draw_networkx_labels(G, pos, ax=ax, labels=labels, font_size=10, font_color="black")
+
+            # Simple Legend
+            from matplotlib.lines import Line2D
+
+            legend_elements = [
+                Line2D([0], [0], color="black", lw=2, label="Value Coupling (Mean)"),
+                Line2D([0], [0], color="black", lw=2, linestyle="--", label="Vol. Coupling (Var)"),
+            ]
+            ax.legend(
+                handles=legend_elements,
+                loc="upper center",
+                bbox_to_anchor=(0.5, -0.05),
+                fontsize="small",
+                ncol=2,
+                frameon=False,
+            )
+
+            ax.axis("off")
+
+        except Exception as e:
+            print(f"Plotting failed for {title}: {e}")
+            import traceback
+
+            traceback.print_exc()
+            ax.text(0.5, 0.5, f"Error: {e}", ha="center", va="center")
 
     plt.tight_layout()
 
@@ -728,8 +888,13 @@ def run_and_plot_comparison(n_trials: int = 175, seed: int = 42, save_dir: str =
         save_path=f"{save_dir}/global_volatility_focus.png",
     )
 
-    plot_changepoint_comparison(
-        unified_network, separate_network, save_path=f"{save_dir}/changepoint_comparison.png"
+    plot_surprise_comparison(
+        unified_network, separate_network, save_path=f"{save_dir}/surprise_comparison.png"
+    )
+
+    print("Generating network structure plot...")
+    plot_network_structure(
+        unified_network, separate_network, save_path=f"{save_dir}/network_structure.png"
     )
 
     return {
@@ -742,12 +907,10 @@ def run_and_plot_comparison(n_trials: int = 175, seed: int = 42, save_dir: str =
 
 
 def main():
-    """run model comparison between unified and separate global volatility models."""
+    # run model comparison between unified and separate global volatility models.
     results = run_and_plot_comparison(n_trials=175, seed=42, save_dir="outputs")
     return results
 
 
 if __name__ == "__main__":
     results = main()
-
-# %%
