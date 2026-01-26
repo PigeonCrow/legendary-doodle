@@ -37,8 +37,8 @@ def simulate_generative_model(n_trials: int = 175, seed: int = 42) -> dict:
 
     # starting values
     x_c[0] = 0.0
-    x_a_check[0] = 6.0  # higher initial local volatility for state a
-    x_b_check[0] = 4.0  # lower initial local volatility for state b
+    x_a_check[0] = 5.0  # higher initial local volatility for state a
+    x_b_check[0] = 5.0  # lower initial local volatility for state b
     x_a[0] = 0.0
     x_b[0] = 0.0
 
@@ -118,15 +118,15 @@ def create_unified_global_volatility_hgf() -> Network:
             volatility_children=2,
             mean=6.0,
             precision=1.0,
-            tonic_volatility=-3.0,  # omega_a
+            tonic_volatility=-2.0,  # omega_a
             volatility_coupling_children=(0.5),  # kappa_a
         )
         # parent of x_b
         .add_nodes(
             volatility_children=3,
-            mean=4.0,
+            mean=6.0,
             precision=1.0,
-            tonic_volatility=-3.0,  # omega_b
+            tonic_volatility=-2.0,  # omega_b
             volatility_coupling_children=(0.5),  # kappa_b
         )
         # global volatility
@@ -153,14 +153,14 @@ def create_separate_global_volatility_hgf() -> Network:
             volatility_children=2,
             mean=6.0,
             precision=1.0,
-            tonic_volatility=-3.0,
+            tonic_volatility=-2.0,
             volatility_coupling_children=(0.5),
         )
         .add_nodes(
             volatility_children=3,
-            mean=4.0,
+            mean=6.0,
             precision=1.0,
-            tonic_volatility=-3.0,
+            tonic_volatility=-2.0,
             volatility_coupling_children=(0.5),
         )
         #  global volatilities
@@ -220,7 +220,7 @@ def create_separate_global_volatility_hgf() -> Network:
 #         .add_nodes(
 #             kind="continuous-state",
 #             volatility_children=3,
-#             mean=4.0,
+#             mean=6.0,
 #             precision=1.0,
 #             tonic_volatility=-3.0,  # omega_b
 #             volatility_coupling_children=(0.5,),  # kappa_b
@@ -290,7 +290,11 @@ def run_inference_batch(
 
     for i, obs in enumerate(observations_list):
         network = network_factory()
-        network, details = run_inference(network, obs, return_details=True)
+        network, details = run_inference(
+            network,
+            obs,
+            return_details=True,
+        )
         details["dataset_idx"] = i
         results.append((network, details))
 
@@ -914,3 +918,5 @@ def main():
 
 if __name__ == "__main__":
     results = main()
+
+# %%

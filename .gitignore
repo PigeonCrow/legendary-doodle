@@ -1,1 +1,6 @@
-*/outputs/**
+outputs/*
+outputs/global_volatility_focus.png
+outputs/network_structure.png
+outputs/surprise_comparison.png
+outputs/global_volatility_focus.png
+outputs/model_comparison.png
