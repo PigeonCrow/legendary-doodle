@@ -78,7 +78,8 @@ def simulate_generative_model(n_trials: int = 175, seed: int = 42) -> dict:
 
     # observations with noise
     u_a = x_a + np.sqrt(eps_a) * np.random.randn(n_trials)
-    u_b = x_b + np.sqrt(eps_b) * np.random.randn(n_trials)
+    # u_b = x_b + np.sqrt(eps_b) * np.random.randn(n_trials)
+    u_b = u_a
 
     return {
         "x_c": x_c,
