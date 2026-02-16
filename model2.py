@@ -324,12 +324,15 @@ if __name__ == "__main__":
 
     # Boosting observations on right arm
     print("plot against observations boosted against volatility")
-    boost_obs_unified = copy.deepcopy(obs_unified)
-    boost_obs_unified[math.floor(N_TRIALS / 2) :, 1] += 3
+    # boost_obs_unified = copy.deepcopy(obs_unified)
+    # boost_obs_unified[math.floor(N_TRIALS / 2) :, 1] += 3
 
     # ploting Change accordingly
     run_inference(results[("separate", "separate")]["network"], obs_separate).plot_trajectories()
     run_inference(results[("unified", "unified")]["network"], obs_unified).plot_trajectories()
+
+    boost_obs_unified = copy.deepcopy(obs_unified)
+    boost_obs_unified[math.floor(N_TRIALS / 2) :, 1] += 5
     run_inference(results[("unified", "unified")]["network"], boost_obs_unified).plot_trajectories()
     run_inference(
         results[("unified", "separate")]["network"], boost_obs_unified
