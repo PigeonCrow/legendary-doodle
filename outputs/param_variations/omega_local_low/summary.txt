@@ -1,0 +1,13 @@
+Condition: omega_local_low
+Overrides: {'omega_a_check': -6.0, 'omega_b_check': -6.0}
+Full params: {'omega_c': -2.0, 'omega_a_check': -6.0, 'omega_b_check': -6.0, 'omega_a': -2.0, 'omega_b': -2.0, 'alpha_c_a': 0.05, 'alpha_c_b': 0.05, 'kappa_a': 0.5, 'kappa_b': 0.5, 'input_precision': 1.0, 'x_a_init': 0.0, 'x_b_init': 2.0, 'x_a_check_init': 2.0, 'x_b_check_init': 1.0, 'x_c_init': 0.0, 'state_precision': 0.5, 'vol_precision': 1.0}
+
+Surprise values (lower = better fit):
+  gen-unified_inf-unified: 477.714
+  gen-unified_inf-separate: 592.279
+  gen-separate_inf-unified: 482.816
+  gen-separate_inf-separate: 591.441
+
+Comparison:
+  UNIFIED obs -> preferred: UNIFIED (delta = 114.6)
+  SEPARATE obs -> preferred: UNIFIED (delta = 108.6)

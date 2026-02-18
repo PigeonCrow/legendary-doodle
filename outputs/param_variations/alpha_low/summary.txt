@@ -1,0 +1,13 @@
+Condition: alpha_low
+Overrides: {'alpha_c_a': 0.01, 'alpha_c_b': 0.01}
+Full params: {'omega_c': -2.0, 'omega_a_check': -3.0, 'omega_b_check': -3.0, 'omega_a': -2.0, 'omega_b': -2.0, 'alpha_c_a': 0.01, 'alpha_c_b': 0.01, 'kappa_a': 0.5, 'kappa_b': 0.5, 'input_precision': 1.0, 'x_a_init': 0.0, 'x_b_init': 2.0, 'x_a_check_init': 2.0, 'x_b_check_init': 1.0, 'x_c_init': 0.0, 'state_precision': 0.5, 'vol_precision': 1.0}
+
+Surprise values (lower = better fit):
+  gen-unified_inf-unified: 814.997
+  gen-unified_inf-separate: 996.746
+  gen-separate_inf-unified: 822.621
+  gen-separate_inf-separate: 999.000
+
+Comparison:
+  UNIFIED obs -> preferred: UNIFIED (delta = 181.7)
+  SEPARATE obs -> preferred: UNIFIED (delta = 176.4)
